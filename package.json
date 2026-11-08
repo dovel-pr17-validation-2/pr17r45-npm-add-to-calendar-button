@@ -1,0 +1,161 @@
+{
+  "name": "add-to-calendar-button",
+  "version": "3.5.1",
+  "engines": {
+    "node": ">=18.17.0",
+    "npm": ">=9.6.7"
+  },
+  "description": "The convenient TS/JS library, which lets you create beautiful add to calendar buttons. Make people save events to their calendars in a reliable way.",
+  "main": "dist/commonjs/index.js",
+  "module": "dist/module/index.js",
+  "files": [
+    "dist",
+    "test",
+    "assets/css/*.css",
+    "CHANGELOG.md",
+    ".npmignore"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/module/index.js",
+      "require": "./dist/commonjs/index.js"
+    },
+    "./styles/*": {
+      "types": "./dist/styles/*.d.ts",
+      "import": "./dist/styles/*.js",
+      "require": "./dist/styles/*.cjs"
+    },
+    "./i18n/*": {
+      "types": "./dist/locales/*.d.ts",
+      "import": "./dist/locales/*.js",
+      "require": "./dist/locales/*.cjs"
+    },
+    "./ssr": {
+      "types": "./dist/ssr/index.d.ts",
+      "import": "./dist/ssr/index.js",
+      "require": "./dist/ssr/index.cjs"
+    },
+    "./utils": {
+      "types": "./dist/utils/index.d.ts",
+      "import": "./dist/utils/index.js",
+      "require": "./dist/utils/index.cjs"
+    },
+    "./no-pro": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/module/no-pro/index.js",
+      "require": "./dist/commonjs/no-pro/index.js"
+    },
+    "./unstyle": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/module/unstyle/index.js",
+      "require": "./dist/commonjs/unstyle/index.js"
+    },
+    "./no-pro-unstyle": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/module/no-pro-unstyle/index.js",
+      "require": "./dist/commonjs/no-pro-unstyle/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "jsdelivr": "./dist/atcb.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/add2cal/add-to-calendar-button.git"
+  },
+  "keywords": [
+    "react",
+    "javascript",
+    "css",
+    "microsoft",
+    "apple",
+    "google",
+    "angular",
+    "widget",
+    "generator",
+    "component",
+    "vue",
+    "calendar",
+    "event",
+    "vanilla-js",
+    "free",
+    "snippet",
+    "outlook",
+    "add-to-calendar",
+    "add-to-calendar-button",
+    "add-event"
+  ],
+  "author": {
+    "name": "Calendarverse GmbH",
+    "email": "mail@caldn.com",
+    "url": "https://calendarverse.org/"
+  },
+  "maintainers": [
+    {
+      "name": "Jens Kuerschner",
+      "url": "https://jekuer.com/"
+    }
+  ],
+  "license": "ELv2",
+  "funding": "https://github.com/add2cal/add-to-calendar-button?sponsor=1",
+  "bugs": {
+    "url": "https://github.com/add2cal/add-to-calendar-button/issues"
+  },
+  "homepage": "https://add-to-calendar-button.com/",
+  "scripts": {
+    "eslint": "eslint .",
+    "eslint:fix": "eslint --fix .",
+    "prettier": "npx prettier . --check",
+    "prettier:fix": "npm run prettier -- --write",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p test/types/tsconfig.json && tsc --noEmit -p test/screen-reader/tsconfig.json",
+    "check": "npm run eslint && npm run prettier && npm run typecheck",
+    "format": "npm run prettier:fix && cd demo && npm run prettier:fix",
+    "fix": "npm run eslint:fix && cd demo && npm run lint:fix && cd .. && npm run format",
+    "test": "node test/test-prep.js && npx web-test-runner \"test/wc-tests/wc-load.test.js\" \"test/wc-tests/recurrence-tz.test.js\" \"test/wc-tests-smoke/*.test.js\"",
+    "test:extended": "node test/test-prep.js && npx web-test-runner \"test/wc-tests/*.test.js\" \"test/wc-tests-smoke/*.test.js\"",
+    "test:full": "node test/test-prep.js && npx web-test-runner \"test/wc-tests/*.test.js\" \"test/wc-tests-smoke/*.test.js\" \"test/wc-tests-full/*.test.js\"",
+    "test:package": "node scripts/test-package.mjs",
+    "test:ssr": "node scripts/build.mjs && node --test \"test/ssr-node/*.test.mjs\"",
+    "test:release": "npm run test:full && npm run test:package && npm run test:ssr",
+    "test:screen-reader": "node --test test/screen-reader/read-to.test.mjs && node test/test-prep.js && npx playwright test --config playwright.screen-reader.config.ts",
+    "dev": "cd demo && npm run dev",
+    "build:all": "npm run build && npm run build:demo",
+    "build:demo": "npm ci --prefix demo --include=dev && npm run build --prefix demo",
+    "build:min": "node scripts/build.mjs --min",
+    "build": "node scripts/build.mjs",
+    "prepack": "npm run build:min"
+  },
+  "dependencies": {
+    "lit": "^3.3.3",
+    "timezones-ical-library": "^3.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@guidepup/guidepup": "0.38.0",
+    "@guidepup/playwright": "0.21.0",
+    "@guidepup/setup": "0.29.3",
+    "@open-wc/testing": "^5.0.0",
+    "@playwright/test": "1.64.1",
+    "@types/node": "^26.6.5",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@web/dev-server-esbuild": "^2.0.0",
+    "@web/test-runner": "^1.0.0",
+    "axe-core": "^4.14.0",
+    "clean-css": "^5.3.3",
+    "dts-bundle-generator": "^9.5.1",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.7",
+    "eslint-plugin-regexp": "^3.3.1",
+    "eslint-plugin-security": "^4.2.0",
+    "eslint-plugin-wc": "^3.1.0",
+    "postcss": "^8.5.32",
+    "prettier": "3.9.10",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^8.3.5"
+  }
+}

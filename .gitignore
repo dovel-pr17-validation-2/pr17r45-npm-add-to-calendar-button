@@ -1,0 +1,33 @@
+﻿# node_modules.
+/node_modules
+/test-results/
+/playwright-report/
+
+# dist folder.
+/dist
+demo/dist
+
+# generated style assets (rebuilt from src/styles/css by scripts/build.mjs).
+/assets/css
+
+# tmp testing files.
+/*.html
+
+# macOS-specific files
+.DS_Store
+
+# jetbrains setting folder
+.idea/
+
+# Visual Studio Code from https://github.com/github/gitignore/blob/master/Global/VisualStudioCode.gitignore
+# Adjust to your needs.
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Local History for Visual Studio Code.
+.history/

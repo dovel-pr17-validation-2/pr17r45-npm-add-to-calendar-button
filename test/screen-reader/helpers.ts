@@ -1,0 +1,208 @@
+import { expect } from '@playwright/test';
+import type { Locator, Page, TestInfo } from '@playwright/test';
+import type { ScreenReaderPlaywright } from '@guidepup/playwright';
+import { PRO_EVT_KEY, PRO_RSVP_KEY, proEvtConfig, proRsvpConfig } from '../fixtures/pro.js';
+
+declare global {
+  interface Window {
+    calendarLinks: string[];
+  }
+}
+
+export const triggerName = /Add to Calendar/i;
+export const eventConfig = {
+  name: 'Accessibility workshop',
+  'start-date': '2050-08-20',
+  'start-time': '14:00',
+  'end-time': '15:00',
+  'time-zone': 'Europe/Berlin',
+  options: ['Google', 'iCal'],
+  trigger: 'click',
+  language: 'en',
+  'button-style': 'default',
+  'hide-branding': true,
+};
+
+export async function mount(page: Page, config: Record<string, unknown>, pro: 'cta' | 'rsvp' | undefined = undefined) {
+  await page.addInitScript(() => {
+    window.calendarLinks = [];
+    window.open = (url) => {
+      window.calendarLinks.push(String(url));
+      return null;
+    };
+  });
+  const unexpectedRequests: string[] = [];
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin === 'http://127.0.0.1:4174') return route.continue();
+    if (pro && url.href === `https://event.caldn.net/${pro === 'cta' ? PRO_EVT_KEY : PRO_RSVP_KEY}/config.json`) {
+      const payload =
+        pro === 'rsvp'
+          ? proRsvpConfig()
+          : proEvtConfig({
+              label: 'Add to Calendar',
+              options: ['Google', 'iCal'],
+              ty: {
+                type: 'form',
+                headline: 'Stay informed',
+                text: 'Tell us where to send your reminder.',
+                url: 'https://example.com/submit',
+                button_label: 'Send reminder',
+                fields: [
+                  { name: 'email', label: 'Email', type: 'email', required: true },
+                  { name: 'terms', label: 'I agree', type: 'checkbox', required: true },
+                ],
+              },
+            });
+      return route.fulfill({ json: payload });
+    }
+    // RSVP seat availability is deterministic. Submissions are deliberately not
+    // fulfilled: these tests exercise client validation, not the RSVP service.
+    if (pro === 'rsvp' && url.origin === 'https://api.add-to-calendar-pro.com' && route.request().method() === 'GET') {
+      return route.fulfill({ json: { total: '0' } });
+    }
+    unexpectedRequests.push(`${route.request().method()} ${url.href}`);
+    await route.abort();
+  });
+  await page.goto('/test/screen-reader/fixture.html');
+  const attributes: Record<string, unknown> = { ...eventConfig, ...(pro ? { prokey: pro === 'cta' ? PRO_EVT_KEY : PRO_RSVP_KEY } : {}), ...config };
+  // Root date/time fields override individual dates. A series fixture must use
+  // only its own dates rather than inheriting the single-event defaults.
+  if (config.dates) {
+    delete attributes['start-date'];
+    delete attributes['start-time'];
+    delete attributes['end-time'];
+  }
+  await page.evaluate(async (attributes) => {
+    await customElements.whenDefined('add-to-calendar-button');
+    const element = document.createElement('add-to-calendar-button');
+    for (const [name, value] of Object.entries(attributes)) {
+      element.setAttribute(name, typeof value === 'object' ? JSON.stringify(value) : String(value));
+    }
+    document.getElementById('fixture')!.append(element);
+    await (element as HTMLElement & { whenInitialized(): Promise<void> }).whenInitialized();
+  }, attributes);
+  const host = page.locator('add-to-calendar-button');
+  await expect(host).toHaveAttribute('atcb-button-id', /.+/);
+  await expect(host.locator('.atcb-initialized')).toBeVisible();
+  return { host, unexpectedRequests };
+}
+
+type ReaderOffsets = { speech: number; items: number };
+const readerOffsets = new WeakMap<ScreenReaderPlaywright, ReaderOffsets>();
+
+export async function checkpointSpeech(reader: ScreenReaderPlaywright) {
+  const speech = await reader.spokenPhraseLog();
+  const items = await reader.itemTextLog();
+  readerOffsets.set(reader, { speech: speech.length, items: items.length });
+}
+
+async function readerOutputSinceCheckpoint(reader: ScreenReaderPlaywright) {
+  const offsets = readerOffsets.get(reader) || { speech: 0, items: 0 };
+  const speech = await reader.spokenPhraseLog();
+  const items = await reader.itemTextLog();
+  return [...speech.slice(offsets.speech), ...items.slice(offsets.items)].join('\n');
+}
+
+export async function expectSpeech(reader: ScreenReaderPlaywright, expected: RegExp, forbidden?: RegExp) {
+  await expect.poll(() => readerOutputSinceCheckpoint(reader), { message: `Screen reader announces ${expected}` }).toMatch(expected);
+  if (forbidden) expect(await readerOutputSinceCheckpoint(reader)).not.toMatch(forbidden);
+}
+
+async function currentReaderOutput(reader: ScreenReaderPlaywright) {
+  return `${await reader.lastSpokenPhrase()}\n${await reader.itemText()}`;
+}
+
+// Reach controls using real keyboard input, never locator.focus() or DOM clicks.
+export async function tabTo(reader: ScreenReaderPlaywright, target: Locator, speech: RegExp, backwards = false, fullCapture = false, maxSteps = 20) {
+  for (let step = 0; step < maxSteps; step++) {
+    await checkpointSpeech(reader);
+    await reader.press(backwards ? 'Shift+Tab' : 'Tab', fullCapture ? { capture: true } : undefined);
+    if (await target.evaluate((element) => element === (element.getRootNode() as Document | ShadowRoot).activeElement)) {
+      await expectSpeech(reader, speech);
+      return;
+    }
+  }
+  throw new Error(`Could not reach ${speech} within ${maxSteps} Tab presses.`);
+}
+
+// Exercise the reading cursor separately from keyboard focus. Hidden background
+// text must not appear when traversing a modal's content.
+export async function readTo(reader: ScreenReaderPlaywright, expected: RegExp, forbidden?: RegExp) {
+  // Snapshot before reading the current item: NVDA may append the target while
+  // those reads are in flight. A later checkpoint would silently discard it.
+  await checkpointSpeech(reader);
+  const currentOutput = `${await currentReaderOutput(reader)}\n${await readerOutputSinceCheckpoint(reader)}`;
+  if (forbidden) expect(currentOutput).not.toMatch(forbidden);
+  if (expected.test(currentOutput)) return;
+  // Keep that checkpoint for the entire traversal so delayed announcements are
+  // retained rather than discarded between navigation commands.
+  const steps: { step: number; output: string }[] = [];
+  for (let step = 0; step < 20; step++) {
+    await reader.next();
+    const output = await readerOutputSinceCheckpoint(reader);
+    steps.push({ step: step + 1, output: output.slice(-1000) });
+    if (forbidden) expect(output).not.toMatch(forbidden);
+    if (expected.test(output)) return;
+  }
+  // Synthetic fixture output only. Expose exactly what the predicate consumed,
+  // not just the later attachment, so capture/checkpoint mismatches are visible.
+  const speech = [...(await reader.spokenPhraseLog())];
+  const items = [...(await reader.itemTextLog())];
+  const diagnostics = {
+    checkpoint: readerOffsets.get(reader),
+    initialOutput: currentOutput,
+    steps,
+    speechLength: speech.length,
+    itemLength: items.length,
+    speech: speech.join('\n').slice(-4000),
+    items: items.join('\n').slice(-4000),
+  };
+  throw new Error(`Could not read ${expected} within 20 screen-reader steps.\nreadTo diagnostics: ${JSON.stringify(diagnostics)}`);
+}
+
+export async function openList(page: Page, reader: ScreenReaderPlaywright) {
+  await reader.navigateToWebContent();
+  const trigger = page.locator('add-to-calendar-button').getByRole('button', { name: triggerName });
+  try {
+    // The fixture has only one focusable control before the trigger. Fail fast if
+    // VoiceOver stayed on its web-content container instead of entering Safari's
+    // keyboard focus order, then reset that reader interaction once.
+    await tabTo(reader, trigger, /Add to Calendar/i, false, false, 5);
+  } catch {
+    await reader.stopInteracting({ capture: false });
+    await reader.navigateToWebContent({ capture: false });
+    await tabTo(reader, trigger, /Add to Calendar/i, false, true);
+  }
+  await checkpointSpeech(reader);
+  await reader.press('Enter');
+  await expect(page.getByRole('menu')).toBeVisible();
+  const google = page.getByRole('menuitem', { name: 'Google', exact: true });
+  // Programmatic focus enters the menu, but VoiceOver and NVDA can initially
+  // announce only its container, and Chromium can leave focus on the trigger.
+  // Follow the real keyboard route when focus was not moved automatically.
+  if (!(await google.evaluate((element) => element.matches(':focus')))) {
+    await tabTo(reader, google, /Google/i);
+  }
+  return trigger;
+}
+
+export async function closeWithEscape(page: Page, reader: ScreenReaderPlaywright, trigger: Locator) {
+  await checkpointSpeech(reader);
+  // Capture all speech from the Escape so the trigger announcement that follows
+  // menu/dialog dismissal is retained even under VoiceOver's "initial" capture
+  // mode, which only keeps the first phrase per command.
+  await reader.press('Escape', { capture: true });
+  // NVDA can consume the first Escape while leaving focus/browse mode. A second
+  // press then reaches the page and dismisses the open menu or dialog.
+  if ((await page.getByRole('menu').isVisible()) || (await page.getByRole('dialog').isVisible())) await reader.press('Escape', { capture: true });
+  await expect(page.getByRole('menu')).toBeHidden();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expectSpeech(reader, /Add to Calendar|RSVP/i);
+}
+
+export async function attachSpeech(reader: ScreenReaderPlaywright, testInfo: TestInfo) {
+  await testInfo.attach('screen-reader-speech', { body: (await reader.spokenPhraseLog()).join('\n'), contentType: 'text/plain' });
+  await testInfo.attach('screen-reader-items', { body: (await reader.itemTextLog()).join('\n'), contentType: 'text/plain' });
+}
